@@ -10,6 +10,9 @@ CREATE TABLE "users" (
   "updated_at" TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE "refresh_tokens" ("id" UUID PRIMARY KEY DEFAULT gen_random_uuid(), "user_id" UUID NOT NULL REFERENCES "users"("id") ON DELETE CASCADE, "token_hash" TEXT NOT NULL UNIQUE, "expires_at" TIMESTAMPTZ NOT NULL, "revoked_at" TIMESTAMPTZ, "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX "refresh_tokens_user_id_expires_at_idx" ON "refresh_tokens" ("user_id", "expires_at");
+
 CREATE TABLE "roles" ("id" UUID PRIMARY KEY DEFAULT gen_random_uuid(), "name" TEXT NOT NULL UNIQUE, "description" TEXT, "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE "permissions" ("id" UUID PRIMARY KEY DEFAULT gen_random_uuid(), "code" TEXT NOT NULL UNIQUE, "description" TEXT);
 CREATE TABLE "user_roles" ("user_id" UUID NOT NULL REFERENCES "users"("id") ON DELETE CASCADE, "role_id" UUID NOT NULL REFERENCES "roles"("id") ON DELETE CASCADE, PRIMARY KEY ("user_id", "role_id"));

@@ -7,3 +7,167 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  displayName  String       @map("display_name")
+  status       UserStatus   @default(ACTIVE)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  roles        UserRole[]
+  warehouses   UserWarehouse[]
+  auditEvents  AuditEvent[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String           @unique
+  description String?
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  userRoles   UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique
+  description String?
+  roleLinks   RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Warehouse {
+  id        String          @id @default(uuid()) @db.Uuid
+  code      String          @unique
+  name      String
+  address   String?
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  userScope UserWarehouse[]
+
+  @@map("warehouses")
+}
+
+model UserWarehouse {
+  userId      String    @map("user_id") @db.Uuid
+  warehouseId String    @map("warehouse_id") @db.Uuid
+  isDefault   Boolean   @default(false) @map("is_default")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, warehouseId])
+  @@map("user_warehouses")
+}
+
+model Category {
+  id       String     @id @default(uuid()) @db.Uuid
+  name     String
+  parentId String?    @map("parent_id") @db.Uuid
+  active   Boolean    @default(true)
+  parent   Category?  @relation("category_tree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[] @relation("category_tree")
+  products Product[]
+
+  @@unique([name, parentId])
+  @@map("categories")
+}
+
+model Product {
+  id            String    @id @default(uuid()) @db.Uuid
+  sku           String    @unique
+  name          String
+  description   String?
+  categoryId    String?   @map("category_id") @db.Uuid
+  baseUnit      String    @default("each") @map("base_unit")
+  barcode       String?   @unique
+  reorderPoint  Int?      @map("reorder_point")
+  reorderQty    Int?      @map("reorder_qty")
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  category      Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@map("products")
+}
+
+model Supplier {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @unique
+  contactName   String?  @map("contact_name")
+  email         String?
+  phone         String?
+  address       String?
+  paymentTerms  String?  @map("payment_terms")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("suppliers")
+}
+
+model Customer {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @unique
+  contactName   String?  @map("contact_name")
+  email         String?
+  phone         String?
+  address       String?
+  paymentTerms  String?  @map("payment_terms")
+  creditLimit   Decimal? @map("credit_limit") @db.Decimal(18, 2)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("customers")
+}
+
+model AuditEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  requestId  String?  @map("request_id")
+  reason     String?
+  before     Json?
+  after      Json?
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, occurredAt])
+  @@map("audit_events")
+}
+

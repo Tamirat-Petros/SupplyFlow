@@ -36,6 +36,19 @@ enum TransferStatus {
   CANCELLED
 }
 
+enum PurchaseOrderStatus {
+  DRAFT
+  APPROVED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum ReceiptStatus {
+  POSTED
+  CANCELLED
+}
+
 model User {
   id           String       @id @default(uuid()) @db.Uuid
   email        String       @unique
@@ -119,6 +132,7 @@ model Warehouse {
   reservations StockReservation[]
   sourceTransfers WarehouseTransfer[] @relation("transfer_source")
   destinationTransfers WarehouseTransfer[] @relation("transfer_destination")
+  purchaseOrders PurchaseOrder[]
 
   @@map("warehouses")
 }
@@ -165,6 +179,8 @@ model Product {
   movements     StockMovement[]
   reservations  StockReservation[]
   transferLines WarehouseTransferLine[]
+  purchaseOrderLines PurchaseOrderLine[]
+  receiptLines PurchaseReceiptLine[]
 
   @@map("products")
 }
@@ -265,8 +281,78 @@ model Supplier {
   active        Boolean  @default(true)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  purchaseOrders PurchaseOrder[]
 
   @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id          String              @id @default(uuid()) @db.Uuid
+  number      String              @unique
+  supplierId  String              @map("supplier_id") @db.Uuid
+  warehouseId String              @map("warehouse_id") @db.Uuid
+  status      PurchaseOrderStatus @default(DRAFT)
+  expectedAt  DateTime?           @map("expected_at") @db.Timestamptz(6)
+  notes       String?
+  createdById String              @map("created_by_id") @db.Uuid
+  approvedById String?            @map("approved_by_id") @db.Uuid
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  approvedAt  DateTime?           @map("approved_at") @db.Timestamptz(6)
+  supplier    Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  lines       PurchaseOrderLine[]
+  receipts    PurchaseReceipt[]
+
+  @@index([supplierId, status])
+  @@index([warehouseId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id                  String               @id @default(uuid()) @db.Uuid
+  purchaseOrderId     String               @map("purchase_order_id") @db.Uuid
+  productId           String               @map("product_id") @db.Uuid
+  orderedQty          Int                  @map("ordered_qty")
+  acceptedReceivedQty Int                  @default(0) @map("accepted_received_qty")
+  unitCost            Decimal              @map("unit_cost") @db.Decimal(18, 2)
+  purchaseOrder       PurchaseOrder        @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+  receiptLines        PurchaseReceiptLine[]
+
+  @@unique([purchaseOrderId, productId])
+  @@map("purchase_order_lines")
+}
+
+model PurchaseReceipt {
+  id              String          @id @default(uuid()) @db.Uuid
+  number          String          @unique
+  purchaseOrderId String          @map("purchase_order_id") @db.Uuid
+  supplierReference String?       @map("supplier_reference")
+  status          ReceiptStatus   @default(POSTED)
+  receivedById    String          @map("received_by_id") @db.Uuid
+  receivedAt      DateTime        @default(now()) @map("received_at") @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  purchaseOrder   PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  lines           PurchaseReceiptLine[]
+
+  @@index([purchaseOrderId, receivedAt])
+  @@map("purchase_receipts")
+}
+
+model PurchaseReceiptLine {
+  id                    String           @id @default(uuid()) @db.Uuid
+  purchaseReceiptId     String           @map("purchase_receipt_id") @db.Uuid
+  purchaseOrderLineId   String           @map("purchase_order_line_id") @db.Uuid
+  productId             String           @map("product_id") @db.Uuid
+  acceptedQty           Int              @default(0) @map("accepted_qty")
+  rejectedQty           Int              @default(0) @map("rejected_qty")
+  reason                String?
+  purchaseReceipt       PurchaseReceipt  @relation(fields: [purchaseReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderLine     PurchaseOrderLine @relation(fields: [purchaseOrderLineId], references: [id], onDelete: Restrict)
+  product               Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseReceiptId, purchaseOrderLineId])
+  @@map("purchase_receipt_lines")
 }
 
 model Customer {

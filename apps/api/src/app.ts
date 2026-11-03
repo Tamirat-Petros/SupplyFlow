@@ -12,6 +12,7 @@ import { usersRouter } from './modules/users/users.router.js';
 import { categoriesRouter, customersRouter, productsRouter, suppliersRouter, warehousesRouter } from './modules/master-data/master-data.router.js';
 import { inventoryRouter } from './modules/inventory/inventory.router.js';
 import { procurementRouter } from './modules/procurement/procurement.router.js';
+import { salesRouter } from './modules/sales/sales.router.js';
 
 export const app = express();
 
@@ -32,6 +33,7 @@ app.use('/api/v1/suppliers', suppliersRouter);
 app.use('/api/v1/customers', customersRouter);
 app.use('/api/v1/inventory', inventoryRouter);
 app.use('/api/v1/procurement', procurementRouter);
+app.use('/api/v1/sales', salesRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 

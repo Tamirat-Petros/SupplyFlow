@@ -27,6 +27,7 @@ async function buildContext(userId: string): Promise<AuthContext> {
   return {
     userId: user.id,
     email: user.email,
+    roleNames: user.roles.map((link) => link.role.name),
     permissions: [...new Set(user.roles.flatMap((link) => link.role.permissions.map((grant) => grant.permission.code)))],
     warehouseIds: user.warehouses.map((scope) => scope.warehouseId),
   };
@@ -76,8 +77,8 @@ export async function signOut(refreshToken: string) {
 export function verifyAccessToken(token: string): AuthContext {
   try {
     const claims = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtClaims;
-    if (typeof claims.userId !== 'string' || !Array.isArray(claims.permissions) || !Array.isArray(claims.warehouseIds)) throw new Error('Malformed claims');
-    return { userId: claims.userId, email: claims.email, permissions: claims.permissions, warehouseIds: claims.warehouseIds };
+    if (typeof claims.userId !== 'string' || typeof claims.email !== 'string' || !Array.isArray(claims.roleNames) || !Array.isArray(claims.permissions) || !Array.isArray(claims.warehouseIds)) throw new Error('Malformed claims');
+    return { userId: claims.userId, email: claims.email, roleNames: claims.roleNames, permissions: claims.permissions, warehouseIds: claims.warehouseIds };
   } catch {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentication is required');
   }

@@ -2,7 +2,7 @@
 
 ## Delivery approach
 
-Build in small, reviewable milestones on a dedicated development branch, committing each coherent milestone. This repository currently contains no application files or commits. The planning branch is `codex/planning-architecture`; do not push without explicit approval. After approval to implement, create or continue on an implementation branch following the repository's eventual branch policy. Keep secrets, real customer data, generated build outputs, and local environment files out of Git.
+Build in small, reviewable milestones on dedicated development branches, committing each coherent milestone. Keep secrets, real customer data, generated build outputs, and local environment files out of Git.
 
 ## Phases, deliverables, dependencies
 

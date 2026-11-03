@@ -9,6 +9,7 @@ import { adjustStock, assertWarehouseScope, dispatchReservation, receiveStock, r
 const stockChangeSchema = z.object({ productId: z.string().uuid(), warehouseId: z.string().uuid(), quantity: z.number().int().positive(), referenceId: z.string().trim().min(1).max(100), reason: z.string().trim().min(3).max(500).optional() });
 const adjustmentSchema = z.object({ productId: z.string().uuid(), warehouseId: z.string().uuid(), quantity: z.number().int().refine((value) => value !== 0), reason: z.string().trim().min(3).max(500) });
 const reservationSchema = z.object({ productId: z.string().uuid(), warehouseId: z.string().uuid(), quantity: z.number().int().positive(), referenceId: z.string().trim().min(1).max(100), expiresAt: z.string().datetime().optional() });
+const dispatchSchema = z.object({ quantity: z.number().int().positive() });
 
 export const inventoryRouter = Router();
 inventoryRouter.use(authenticate);
@@ -41,5 +42,5 @@ inventoryRouter.post('/reservations/:id/release', requirePermission('inventory.m
 });
 
 inventoryRouter.post('/reservations/:id/dispatch', requirePermission('inventory.manage'), async (req, res, next) => {
-  try { const id = z.string().uuid().parse(req.params.id); const auth = (req as AuthenticatedRequest).auth!; const reservation = await prisma.stockReservation.findUnique({ where: { id }, select: { warehouseId: true } }); if (!reservation) throw new AppError(404, 'NOT_FOUND', 'Stock reservation was not found'); assertWarehouseScope(auth.roleNames, auth.warehouseIds, reservation.warehouseId); const result = await prisma.$transaction(async (tx) => { const dispatched = await dispatchReservation(tx, id, auth.userId); await tx.auditEvent.create({ data: { actorId: auth.userId, action: 'RESERVATION_DISPATCHED', entityType: 'RESERVATION', entityId: id, requestId: res.locals.requestId } }); return dispatched; }); res.json({ data: result }); } catch (error) { next(error); }
+  try { const id = z.string().uuid().parse(req.params.id); const body = dispatchSchema.parse(req.body); const auth = (req as AuthenticatedRequest).auth!; const reservation = await prisma.stockReservation.findUnique({ where: { id }, select: { warehouseId: true } }); if (!reservation) throw new AppError(404, 'NOT_FOUND', 'Stock reservation was not found'); assertWarehouseScope(auth.roleNames, auth.warehouseIds, reservation.warehouseId); const result = await prisma.$transaction(async (tx) => { const dispatched = await dispatchReservation(tx, id, body.quantity, auth.userId); await tx.auditEvent.create({ data: { actorId: auth.userId, action: 'RESERVATION_DISPATCHED', entityType: 'RESERVATION', entityId: id, requestId: res.locals.requestId, after: body } }); return dispatched; }); res.json({ data: result }); } catch (error) { next(error); }
 });

@@ -225,6 +225,8 @@ model StockReservation {
   warehouseId String            @map("warehouse_id") @db.Uuid
   referenceId String            @map("reference_id")
   quantity    Int
+  remainingQty Int              @map("remaining_qty")
+  remainingQty Int              @map("remaining_qty")
   status      ReservationStatus @default(ACTIVE)
   expiresAt   DateTime?         @map("expires_at") @db.Timestamptz(6)
   createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)

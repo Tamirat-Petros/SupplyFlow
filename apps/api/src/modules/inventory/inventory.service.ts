@@ -59,14 +59,14 @@ export async function reserveStock(tx: Transaction, input: { productId: string; 
   const current = await lockBalance(tx, input.productId, input.warehouseId);
   if (current.on_hand - current.reserved < input.quantity) throw new AppError(422, 'INSUFFICIENT_AVAILABLE_STOCK', 'Insufficient available inventory');
   const { actorId: _actorId, ...reservationData } = input;
-  const reservation = await tx.stockReservation.create({ data: reservationData });
+  const reservation = await tx.stockReservation.create({ data: { ...reservationData, remainingQty: input.quantity } });
   await tx.inventoryBalance.update({ where: { productId_warehouseId: { productId: input.productId, warehouseId: input.warehouseId } }, data: { reserved: { increment: input.quantity }, version: { increment: 1 } } });
   return reservation;
 }
 
 async function lockReservation(tx: Transaction, reservationId: string) {
-  const rows = await tx.$queryRaw<Array<{ id: string; product_id: string; warehouse_id: string; quantity: number; status: string }>>(Prisma.sql`
-    SELECT id, product_id, warehouse_id, quantity, status FROM stock_reservations WHERE id = ${reservationId}::uuid FOR UPDATE
+  const rows = await tx.$queryRaw<Array<{ id: string; product_id: string; warehouse_id: string; remaining_qty: number; status: string }>>(Prisma.sql`
+    SELECT id, product_id, warehouse_id, remaining_qty, status FROM stock_reservations WHERE id = ${reservationId}::uuid FOR UPDATE
   `);
   const reservation = rows[0];
   if (!reservation) throw new AppError(404, 'NOT_FOUND', 'Stock reservation was not found');
@@ -78,16 +78,17 @@ export async function releaseReservation(tx: Transaction, reservationId: string)
   const reservation = await lockReservation(tx, reservationId);
   const current = await lockBalance(tx, reservation.product_id, reservation.warehouse_id);
   await tx.stockReservation.update({ where: { id: reservation.id }, data: { status: 'RELEASED' } });
-  await tx.inventoryBalance.update({ where: { productId_warehouseId: { productId: reservation.product_id, warehouseId: reservation.warehouse_id } }, data: { reserved: current.reserved - reservation.quantity, version: { increment: 1 } } });
-  return { productId: reservation.product_id, warehouseId: reservation.warehouse_id, quantity: reservation.quantity };
+  await tx.inventoryBalance.update({ where: { productId_warehouseId: { productId: reservation.product_id, warehouseId: reservation.warehouse_id } }, data: { reserved: current.reserved - reservation.remaining_qty, version: { increment: 1 } } });
+  return { productId: reservation.product_id, warehouseId: reservation.warehouse_id, quantity: reservation.remaining_qty };
 }
 
-export async function dispatchReservation(tx: Transaction, reservationId: string, actorId: string) {
+export async function dispatchReservation(tx: Transaction, reservationId: string, quantity: number, actorId: string) {
   const reservation = await lockReservation(tx, reservationId);
   const current = await lockBalance(tx, reservation.product_id, reservation.warehouse_id);
-  if (current.on_hand < reservation.quantity || current.reserved < reservation.quantity) throw new AppError(409, 'INVENTORY_INCONSISTENT', 'Reservation cannot be dispatched against current inventory');
-  await tx.stockReservation.update({ where: { id: reservation.id }, data: { status: 'CONSUMED' } });
-  await tx.inventoryBalance.update({ where: { productId_warehouseId: { productId: reservation.product_id, warehouseId: reservation.warehouse_id } }, data: { onHand: current.on_hand - reservation.quantity, reserved: current.reserved - reservation.quantity, version: { increment: 1 } } });
-  await addMovement(tx, { productId: reservation.product_id, warehouseId: reservation.warehouse_id, quantity: -reservation.quantity, movementType: 'SALE_DISPATCH', referenceType: 'RESERVATION', referenceId: reservation.id, actorId });
-  return { productId: reservation.product_id, warehouseId: reservation.warehouse_id, quantity: reservation.quantity };
+  if (quantity > reservation.remaining_qty || current.on_hand < quantity || current.reserved < quantity) throw new AppError(409, 'INVENTORY_INCONSISTENT', 'Reservation cannot be dispatched against current inventory');
+  const remainingQty = reservation.remaining_qty - quantity;
+  await tx.stockReservation.update({ where: { id: reservation.id }, data: { remainingQty, status: remainingQty === 0 ? 'CONSUMED' : 'ACTIVE' } });
+  await tx.inventoryBalance.update({ where: { productId_warehouseId: { productId: reservation.product_id, warehouseId: reservation.warehouse_id } }, data: { onHand: current.on_hand - quantity, reserved: current.reserved - quantity, version: { increment: 1 } } });
+  await addMovement(tx, { productId: reservation.product_id, warehouseId: reservation.warehouse_id, quantity: -quantity, movementType: 'SALE_DISPATCH', referenceType: 'RESERVATION', referenceId: reservation.id, actorId });
+  return { productId: reservation.product_id, warehouseId: reservation.warehouse_id, quantity };
 }

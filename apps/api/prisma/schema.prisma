@@ -12,6 +12,30 @@ enum UserStatus {
   INACTIVE
 }
 
+enum StockMovementType {
+  RECEIPT
+  RESERVATION
+  RELEASE
+  SALE_DISPATCH
+  TRANSFER_OUT
+  TRANSFER_IN
+  CUSTOMER_RETURN
+  ADJUSTMENT
+}
+
+enum ReservationStatus {
+  ACTIVE
+  RELEASED
+  CONSUMED
+}
+
+enum TransferStatus {
+  DRAFT
+  DISPATCHED
+  RECEIVED
+  CANCELLED
+}
+
 model User {
   id           String       @id @default(uuid()) @db.Uuid
   email        String       @unique
@@ -90,6 +114,11 @@ model Warehouse {
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   userScope UserWarehouse[]
+  balances  InventoryBalance[]
+  movements StockMovement[]
+  reservations StockReservation[]
+  sourceTransfers WarehouseTransfer[] @relation("transfer_source")
+  destinationTransfers WarehouseTransfer[] @relation("transfer_destination")
 
   @@map("warehouses")
 }
@@ -132,8 +161,97 @@ model Product {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   category      Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  balances      InventoryBalance[]
+  movements     StockMovement[]
+  reservations  StockReservation[]
+  transferLines WarehouseTransferLine[]
 
   @@map("products")
+}
+
+model InventoryBalance {
+  productId   String    @map("product_id") @db.Uuid
+  warehouseId String    @map("warehouse_id") @db.Uuid
+  onHand      Int       @default(0) @map("on_hand")
+  reserved    Int       @default(0)
+  version     Int       @default(0)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@id([productId, warehouseId])
+  @@map("inventory_balances")
+}
+
+model StockMovement {
+  id              String            @id @default(uuid()) @db.Uuid
+  movementGroupId String            @map("movement_group_id") @db.Uuid
+  productId       String            @map("product_id") @db.Uuid
+  warehouseId     String            @map("warehouse_id") @db.Uuid
+  quantity        Int
+  movementType    StockMovementType @map("movement_type")
+  referenceType   String?           @map("reference_type")
+  referenceId     String?           @map("reference_id")
+  reason          String?
+  actorId         String?           @map("actor_id") @db.Uuid
+  occurredAt      DateTime          @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  product         Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([productId, warehouseId, occurredAt])
+  @@index([referenceType, referenceId])
+  @@map("stock_movements")
+}
+
+model StockReservation {
+  id          String            @id @default(uuid()) @db.Uuid
+  productId   String            @map("product_id") @db.Uuid
+  warehouseId String            @map("warehouse_id") @db.Uuid
+  referenceId String            @map("reference_id")
+  quantity    Int
+  status      ReservationStatus @default(ACTIVE)
+  expiresAt   DateTime?         @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  product     Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse         @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([referenceId, status])
+  @@index([productId, warehouseId, status])
+  @@map("stock_reservations")
+}
+
+model WarehouseTransfer {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  number                 String                 @unique
+  sourceWarehouseId      String                 @map("source_warehouse_id") @db.Uuid
+  destinationWarehouseId String                 @map("destination_warehouse_id") @db.Uuid
+  status                 TransferStatus         @default(DRAFT)
+  requestedAt            DateTime               @default(now()) @map("requested_at") @db.Timestamptz(6)
+  dispatchedAt           DateTime?              @map("dispatched_at") @db.Timestamptz(6)
+  receivedAt             DateTime?              @map("received_at") @db.Timestamptz(6)
+  createdById            String                 @map("created_by_id") @db.Uuid
+  sourceWarehouse        Warehouse              @relation("transfer_source", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouse   Warehouse              @relation("transfer_destination", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  lines                  WarehouseTransferLine[]
+
+  @@index([sourceWarehouseId, status])
+  @@index([destinationWarehouseId, status])
+  @@map("warehouse_transfers")
+}
+
+model WarehouseTransferLine {
+  id            String            @id @default(uuid()) @db.Uuid
+  transferId    String            @map("transfer_id") @db.Uuid
+  productId     String            @map("product_id") @db.Uuid
+  requestedQty  Int               @map("requested_qty")
+  dispatchedQty Int               @default(0) @map("dispatched_qty")
+  receivedQty   Int               @default(0) @map("received_qty")
+  transfer      WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product       Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([transferId, productId])
+  @@map("warehouse_transfer_lines")
 }
 
 model Supplier {

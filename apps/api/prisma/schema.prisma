@@ -49,6 +49,20 @@ enum ReceiptStatus {
   CANCELLED
 }
 
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  PARTIALLY_FULFILLED
+  FULFILLED
+  CANCELLED
+}
+
+enum ShipmentStatus {
+  DISPATCHED
+  DELIVERED
+  FAILED
+}
+
 model User {
   id           String       @id @default(uuid()) @db.Uuid
   email        String       @unique
@@ -133,6 +147,8 @@ model Warehouse {
   sourceTransfers WarehouseTransfer[] @relation("transfer_source")
   destinationTransfers WarehouseTransfer[] @relation("transfer_destination")
   purchaseOrders PurchaseOrder[]
+  salesOrders SalesOrder[]
+  shipments Shipment[]
 
   @@map("warehouses")
 }
@@ -181,6 +197,8 @@ model Product {
   transferLines WarehouseTransferLine[]
   purchaseOrderLines PurchaseOrderLine[]
   receiptLines PurchaseReceiptLine[]
+  salesOrderLines SalesOrderLine[]
+  shipmentLines ShipmentLine[]
 
   @@map("products")
 }
@@ -369,8 +387,82 @@ model Customer {
   active        Boolean  @default(true)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  salesOrders   SalesOrder[]
 
   @@map("customers")
+}
+
+model SalesOrder {
+  id          String           @id @default(uuid()) @db.Uuid
+  number      String           @unique
+  customerId  String           @map("customer_id") @db.Uuid
+  warehouseId String           @map("warehouse_id") @db.Uuid
+  status      SalesOrderStatus @default(DRAFT)
+  deliveryAddress String?      @map("delivery_address")
+  requestedAt DateTime?        @map("requested_at") @db.Timestamptz(6)
+  notes       String?
+  createdById String           @map("created_by_id") @db.Uuid
+  confirmedAt DateTime?        @map("confirmed_at") @db.Timestamptz(6)
+  cancelledAt DateTime?        @map("cancelled_at") @db.Timestamptz(6)
+  cancellationReason String?   @map("cancellation_reason")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  customer    Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  lines       SalesOrderLine[]
+  shipments   Shipment[]
+
+  @@index([customerId, status])
+  @@index([warehouseId, status])
+  @@map("sales_orders")
+}
+
+model SalesOrderLine {
+  id            String       @id @default(uuid()) @db.Uuid
+  salesOrderId  String       @map("sales_order_id") @db.Uuid
+  productId     String       @map("product_id") @db.Uuid
+  orderedQty    Int          @map("ordered_qty")
+  fulfilledQty  Int          @default(0) @map("fulfilled_qty")
+  cancelledQty  Int          @default(0) @map("cancelled_qty")
+  unitPrice     Decimal      @map("unit_price") @db.Decimal(18, 2)
+  salesOrder    SalesOrder   @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product       Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  shipmentLines ShipmentLine[]
+
+  @@unique([salesOrderId, productId])
+  @@map("sales_order_lines")
+}
+
+model Shipment {
+  id           String         @id @default(uuid()) @db.Uuid
+  number       String         @unique
+  salesOrderId String         @map("sales_order_id") @db.Uuid
+  warehouseId  String         @map("warehouse_id") @db.Uuid
+  status       ShipmentStatus @default(DISPATCHED)
+  dispatchedAt DateTime       @default(now()) @map("dispatched_at") @db.Timestamptz(6)
+  deliveredAt  DateTime?      @map("delivered_at") @db.Timestamptz(6)
+  proofReference String?      @map("proof_reference")
+  exceptionNote String?       @map("exception_note")
+  createdById  String         @map("created_by_id") @db.Uuid
+  salesOrder   SalesOrder     @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  lines        ShipmentLine[]
+
+  @@index([salesOrderId, status])
+  @@map("shipments")
+}
+
+model ShipmentLine {
+  id               String         @id @default(uuid()) @db.Uuid
+  shipmentId       String         @map("shipment_id") @db.Uuid
+  salesOrderLineId String         @map("sales_order_line_id") @db.Uuid
+  productId        String         @map("product_id") @db.Uuid
+  quantity         Int
+  shipment         Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  salesOrderLine   SalesOrderLine @relation(fields: [salesOrderLineId], references: [id], onDelete: Restrict)
+  product          Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([shipmentId, salesOrderLineId])
+  @@map("shipment_lines")
 }
 
 model AuditEvent {
